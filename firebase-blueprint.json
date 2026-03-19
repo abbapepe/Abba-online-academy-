@@ -1,0 +1,95 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "User's full name" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "phoneNumber": { "type": "string", "description": "User's phone number" },
+        "gender": { "type": "string", "enum": ["male", "female", "other"], "description": "User's gender" },
+        "dateOfBirth": { "type": "string", "format": "date", "description": "User's date of birth" },
+        "role": { "type": "string", "enum": ["student", "admin"], "description": "User's role in the academy" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user profile was created" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "Academy course details",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Course title in English" },
+        "titleHa": { "type": "string", "description": "Course title in Hausa" },
+        "description": { "type": "string", "description": "Course description in English" },
+        "descriptionHa": { "type": "string", "description": "Course description in Hausa" },
+        "duration": { "type": "string", "description": "Course duration" },
+        "students": { "type": "number", "description": "Number of enrolled students" },
+        "category": { "type": "string", "description": "Course category" },
+        "image": { "type": "string", "format": "uri", "description": "Course image URL" },
+        "price": { "type": "number", "description": "Course price" }
+      },
+      "required": ["title", "titleHa", "description", "descriptionHa", "price"]
+    },
+    "Enrollment": {
+      "title": "Enrollment",
+      "description": "Student enrollment in a course",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the student" },
+        "courseId": { "type": "string", "description": "ID of the course" },
+        "enrolledAt": { "type": "string", "format": "date-time", "description": "When the student enrolled" }
+      },
+      "required": ["userId", "courseId", "enrolledAt"]
+    },
+    "Lesson": {
+      "title": "Lesson",
+      "description": "A single lesson within a course",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Lesson title in English" },
+        "titleHa": { "type": "string", "description": "Lesson title in Hausa" },
+        "order": { "type": "number", "description": "Order of the lesson" },
+        "content": { "type": "string", "description": "Lesson content" },
+        "videoUrl": { "type": "string", "format": "uri", "description": "Video lecture URL" }
+      },
+      "required": ["title", "titleHa", "order"]
+    },
+    "Progress": {
+      "title": "Progress",
+      "description": "Student progress in a course",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the student" },
+        "courseId": { "type": "string", "description": "ID of the course" },
+        "completedLessons": { "type": "array", "items": { "type": "string" }, "description": "List of completed lesson IDs" },
+        "lastUpdated": { "type": "string", "format": "date-time", "description": "When the progress was last updated" }
+      },
+      "required": ["userId", "courseId", "completedLessons"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/courses/{courseId}": {
+      "schema": "Course",
+      "description": "Course information documents"
+    },
+    "/courses/{courseId}/lessons/{lessonId}": {
+      "schema": "Lesson",
+      "description": "Lessons within a course"
+    },
+    "/enrollments/{enrollmentId}": {
+      "schema": "Enrollment",
+      "description": "Course enrollment documents"
+    },
+    "/users/{userId}/progress/{courseId}": {
+      "schema": "Progress",
+      "description": "Student progress tracking for a specific course"
+    }
+  }
+}

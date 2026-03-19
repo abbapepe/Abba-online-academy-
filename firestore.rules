@@ -1,0 +1,193 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (matches request.auth.uid)
+    // Fields:
+    //   - uid: string (required, immutable) - Firebase Auth UID
+    //   - displayName: string (optional) - User's full name
+    //   - email: string (required, format: email) - User's email address
+    //   - phoneNumber: string (optional, max 20) - User's phone number
+    //   - gender: string (optional, enum: ['male', 'female', 'other']) - User's gender
+    //   - dateOfBirth: string (optional, format: date) - User's date of birth
+    //   - role: string (required, enum: ['student', 'admin']) - User's role
+    //   - createdAt: timestamp (required, immutable) - When the profile was created
+    //
+    // Collection: courses
+    // Document ID: {courseId}
+    // Fields:
+    //   - title: string (required, max 100) - Course title (EN)
+    //   - titleHa: string (required, max 100) - Course title (HA)
+    //   - description: string (required, max 1000) - Course description (EN)
+    //   - descriptionHa: string (required, max 1000) - Course description (HA)
+    //   - duration: string (required, max 50) - Course duration
+    //   - students: number (required, positive) - Number of students
+    //   - category: string (required, max 50) - Course category
+    //   - image: string (required, format: url) - Course image URL
+    //   - price: number (required, positive) - Course price
+    //
+    // Collection: enrollments
+    // Document ID: {enrollmentId}
+    // Fields:
+    //   - userId: string (required, matches request.auth.uid) - Student UID
+    //   - courseId: string (required) - Course ID
+    //   - enrolledAt: timestamp (required, immutable) - When the student enrolled
+    //
+    // Collection: lessons (subcollection of courses)
+    // Document ID: {lessonId}
+    // Fields:
+    //   - title: string (required, max 100) - Lesson title (EN)
+    //   - titleHa: string (required, max 100) - Lesson title (HA)
+    //   - order: number (required, positive) - Lesson order
+    //   - content: string (optional, max 5000) - Lesson content or video URL
+    //
+    // Collection: progress (subcollection of users)
+    // Document ID: {courseId}
+    // Fields:
+    //   - userId: string (required, matches request.auth.uid) - Student UID
+    //   - courseId: string (required) - Course ID
+    //   - completedLessons: list (required, max 100) - List of completed lesson IDs
+    //   - lastUpdated: timestamp (required) - When the progress was last updated
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "abbapepe1999@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidUrl(url) {
+      return url is string && (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function isPositive(field) {
+      return request.resource.data[field] is number && request.resource.data[field] >= 0;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasRequiredFields(['uid', 'email', 'role', 'createdAt']) &&
+             hasOnlyAllowedFields(['uid', 'displayName', 'email', 'phoneNumber', 'gender', 'dateOfBirth', 'role', 'createdAt']) &&
+             data.uid == request.auth.uid &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 20)) &&
+             (!('gender' in data) || (data.gender in ['male', 'female', 'other'])) &&
+             (!('dateOfBirth' in data) || (data.dateOfBirth is string)) &&
+             data.role in ['student', 'admin'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidCourse(data) {
+      return hasRequiredFields(['title', 'titleHa', 'description', 'descriptionHa', 'duration', 'students', 'category', 'image', 'price']) &&
+             hasOnlyAllowedFields(['title', 'titleHa', 'description', 'descriptionHa', 'duration', 'students', 'category', 'image', 'price']) &&
+             data.title is string && data.title.size() <= 100 &&
+             data.titleHa is string && data.titleHa.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.descriptionHa is string && data.descriptionHa.size() <= 1000 &&
+             data.duration is string && data.duration.size() <= 50 &&
+             isPositive('students') &&
+             data.category is string && data.category.size() <= 50 &&
+             isValidUrl(data.image) &&
+             isPositive('price');
+    }
+
+    function isValidEnrollment(data) {
+      return hasRequiredFields(['userId', 'courseId', 'enrolledAt']) &&
+             hasOnlyAllowedFields(['userId', 'courseId', 'enrolledAt']) &&
+             data.userId == request.auth.uid &&
+             data.courseId is string &&
+             data.enrolledAt is timestamp;
+    }
+
+    function isValidLesson(data) {
+      return hasRequiredFields(['title', 'titleHa', 'order']) &&
+             hasOnlyAllowedFields(['title', 'titleHa', 'order', 'content', 'videoUrl']) &&
+             data.title is string && data.title.size() <= 100 &&
+             data.titleHa is string && data.titleHa.size() <= 100 &&
+             data.order is number && data.order >= 0 &&
+             (!('content' in data) || (data.content is string && data.content.size() <= 5000)) &&
+             (!('videoUrl' in data) || (data.videoUrl is string && isValidUrl(data.videoUrl)));
+    }
+
+    function isValidProgress(data) {
+      return hasRequiredFields(['userId', 'courseId', 'completedLessons', 'lastUpdated']) &&
+             hasOnlyAllowedFields(['userId', 'courseId', 'completedLessons', 'lastUpdated']) &&
+             data.userId == request.auth.uid &&
+             data.courseId is string &&
+             data.completedLessons is list && data.completedLessons.size() <= 100 &&
+             data.lastUpdated is timestamp;
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == 'student' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidCourse(request.resource.data);
+      allow delete: if isAdmin();
+
+      match /lessons/{lessonId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isAdmin() && isValidLesson(request.resource.data);
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /users/{userId}/progress/{courseId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isValidProgress(request.resource.data);
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /enrollments/{enrollmentId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isAuthenticated() && isValidEnrollment(request.resource.data) && isOwner(request.resource.data.userId);
+      allow delete: if isOwner(resource.data.userId) || isAdmin();
+    }
+  }
+}
